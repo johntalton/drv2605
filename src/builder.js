@@ -1,42 +1,65 @@
 import { BitSmush } from '@johntalton/bitsmush'
 
-function fieldConverter(buffer, fieldDef) {
+export const DEFAULT_FILED_TYPE = 'int'
+export const DEFAULT_FIELD_OFFSET = 7
+export const DEFAULT_FIELD_LENGTH = 8
+
+function fieldDeserialize(buffer, fieldDef) {
 	const u8 = ArrayBuffer.isView(buffer) ?
 		new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) :
 		new Uint8Array(buffer)
 
-	const type = (fieldDef?.type === undefined ? 'int' : fieldDef.type).toLowerCase()
+	const data = u8[0]
+	const type = (fieldDef?.type ?? DEFAULT_FILED_TYPE).toLowerCase()
+	const offset = fieldDef?.offset ?? DEFAULT_FIELD_OFFSET
+	const length = fieldDef?.length ?? DEFAULT_FIELD_LENGTH
 
 	if(type === 'boolean') {
-		const data = u8[0]
-		const bit = BitSmush.extractBits(data, fieldDef.offset, 1)
+		const bit = BitSmush.extractBits(data, offset, 1)
 		// todo support active low
 		return bit === 1
 	}
 
 	if(type === 'int') {
-		const data = u8[0]
-		const bit = BitSmush.extractBits(data, fieldDef.offset, fieldDef.length)
+		const bits = BitSmush.extractBits(data, offset, length)
+		return bits
+	}
 
-		return bit
+	if(type === 'enum') {
+		const bits = BitSmush.extractBits(data, offset, length)
+		return bits
 	}
 
 	console.warn('unknown type', type)
 
-	return u8[0]
+	return data
+}
+
+function fieldSerialize(value, fieldDef) {
+	const type = (fieldDef?.type ?? DEFAULT_FILED_TYPE).toLowerCase()
+	const offset = fieldDef?.offset ?? DEFAULT_FIELD_OFFSET
+	const length = fieldDef?.length ?? DEFAULT_FIELD_LENGTH
+
+	if (type === 'boolean') {
+		return BitSmush.smushBits([ [ offset, 1 ] ], [ value ? 1 : 0 ])
+	}
+
+	return BitSmush.smushBits([ [ offset, length ] ], [ value ])
 }
 
 export class CommonBuilder {
 	static from(definition) {
 		const funcs = Object.entries(definition.registers)
 			.map(([name, regDef]) => {
-				const funcName = 'get' + name.replace(' ', '')
+				const cleanFuncName = name.replaceAll(/[ \-\(\)]/g, '')
+				const getFuncName = 'get' + cleanFuncName
+				const setFuncName = 'set' + cleanFuncName
 
-				const converter = (buffer) => {
+				const deserializer = (buffer) => {
 					return Object.entries(regDef.fields)
 						.map(([key, fieldDef]) => {
 							return {
-								[key]: fieldConverter(buffer, fieldDef)
+								[key]: fieldDeserialize(buffer, fieldDef)
 							}
 						})
 						.reduce((acc, cur) => {
@@ -44,19 +67,34 @@ export class CommonBuilder {
 						}, {})
 				}
 
-				const func = async (bus) => {
+				const serializer = (obj, ...options) => {
+					const data = Object.entries(regDef.fields)
+						.map(([ key, fieldDef ]) => {
+							return fieldSerialize(obj[key], fieldDef)
+						})
+						.reduce((acc, value) => acc |= value, 0)
 
-					const ab = await bus.readI2cBlock(regDef.address, 1)
-					console.log(bus, funcName + ' : ' + regDef.address, ab)
-					return converter(ab)
+					return new Uint8Array([ data ])
 				}
 
-				return [funcName, func]
+
+				const getFunc = async (bus) => {
+					const ab = await bus.readI2cBlock(regDef.address, 1)
+					return deserializer(ab)
+				}
+
+				const setFunc = async (bus, ...args) => {
+					const data = serializer(...args)
+					const result = await bus.writeI2cBlock(regDef.address, data)
+				}
+
+				return [getFuncName, getFunc, setFuncName, setFunc]
 			})
 
 		const obj = funcs.reduce((acc, data) => {
-			const [ name, value ] = data
-			acc[name] = value
+			const [ getName, getFunc, setName, setFunc ] = data
+			acc[getName] = getFunc
+			acc[setName] = setFunc
 			return acc
 		}, {})
 

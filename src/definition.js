@@ -1,3 +1,12 @@
+export const DEVICE_ID_MAP = {
+	3: 'DRV2605 (contains licensed ROM library, does not contain RAM)',
+	4: 'DRV2604 (contains RAM, does not contain licensed ROM library)',
+	6: 'DRV2604L (low-voltage version of the DRV2604 device)',
+	7: 'DRV2605L (low-voltage version of the DRV2605 device)'
+}
+
+
+
 export const DEFINITION = {
 	name: 'drv2605',
 	registers: {
@@ -8,6 +17,7 @@ export const DEFINITION = {
 			fields: {
 				'DEVICE_ID': { offset: 7, length: 3 },
 				'DIAG_RESULTS': { type: 'boolean', offset: 3},
+				// 'FB_STS': { type: 'boolean', offset: 2 }, // DRV2605 only
 				'OVER_TEMP': { type: 'boolean', offset: 1 },
 				'OC_DETECT': { type: 'boolean', offset: 0 }
 			}
@@ -139,7 +149,7 @@ export const DEFINITION = {
 			address: 0x0D,
 			default: 0x00,
 			fields: {
-				'ODT': {}
+				'ODT': { }
 			}
 		},
 		'Sustain Time Offset Positive': {
@@ -311,9 +321,27 @@ export const DEFINITION = {
 			address: 0x1C,
 			default: 0xF5,
 			fields: {
-				'BIDIR_INPUT': { offset: 7 },
+				'BIDIR_INPUT': {
+					type: 'enum',
+					offset: 7,
+					length: 1,
+					enumerations: [
+						'Unidirectional input mode',
+						'Bidirectional input mode'
+					]
+				},
 				'BRAKE_STABILIZER': { type: 'boolean', offset: 6 },
-				'SAMPLE_TIME': { offset: 5, length: 2 },
+				'SAMPLE_TIME': {
+					type: 'enum',
+					offset: 5,
+					length: 2,
+					enumerations: [
+						'150 µs',
+						'200 µs',
+						'250 µs',
+						'300 µs'
+					]
+				},
 				'BLANKING_TIME': { offset: 3, length: 2 },
 				'IDISS_TIME': { offset: 1, length: 2 }
 			}
@@ -322,37 +350,128 @@ export const DEFINITION = {
 			address: 0x1D,
 			default: 0xA0,
 			fields: {
-				'NG_THRESH': { offset: 7, length: 2 },
-				'ERM_OPEN_LOOP': { offset: 5 },
-				'SUPPLY_COMP_DIS': { type: 'boolean', offset: 4 },
-				'DATA_FORMAT_RTP': { offset: 3 },
-				'LRA_DRIVE_MODE': { offset: 2 },
-				'N_PWM_ANALOG': { offset: 1 },
-				'LRA_OPEN_LOOP': { offset: 0 }
+				'NG_THRESH': {
+					type: 'enum',
+					offset: 7,
+					length: 2,
+					enumerations: [
+						'Disabled', '2%', '4%', '8%'
+					]
+				},
+				'ERM_OPEN_LOOP': {
+					type: 'enum',
+					offset: 5,
+					length: 1,
+					enumerations: [ 'Closed Loop', 'Open Loop' ]
+				},
+				'SUPPLY_COMP_DIS': {
+					type: 'boolean',
+					offset: 4
+				},
+				'DATA_FORMAT_RTP': {
+					type: 'enum',
+					offset: 3, length: 1,
+					enumerations: [ 'signed', 'unsigned' ]
+				},
+				'LRA_DRIVE_MODE': {
+					type: 'enum',
+					offset: 2,
+					length: 1,
+					enumerations: [ 'Once Per Cycle', 'Twice Per Cycle' ]
+				},
+				'N_PWM_ANALOG': {
+					type: 'enum',
+					offset: 1,
+					length: 1,
+					enumerations: [ 'PWM Input', 'Analog Input' ]
+				},
+				'LRA_OPEN_LOOP': {
+					type: 'enum',
+					offset: 0,
+					length: 1,
+					enumerations: [ 'Auto-resonance mode', 'LRA open-loop mode' ]
+				}
 			}
 		},
 		'Control 4': {
 			address: 0x1E,
 			default: 0x20,
 			fields: {
-				'ZC_DET_TIME': { offset: 7, length: 2 },
-				'AUTO_CAL_TIME': { offset: 5, length: 2 },
-				'OTP_STATUS': { type: 'boolean', offset: 2, readonly: true },
+				'ZC_DET_TIME': {	// DRV2605L only
+					type: 'enum',
+					offset: 7,
+					length: 2,
+					enumerations: [
+						'100 µs',
+						'200 µs',
+						'300 µs',
+						'390 µs'
+					]
+				},
+				'AUTO_CAL_TIME': {
+					type: 'enum',
+					offset: 5,
+					length: 2,
+					enumerations: [
+						'150 to 350',
+						'250 to 450',
+						'500 to 700',
+						'1000 to 1200'
+					]
+				},
+				'OTP_STATUS': {
+					type: 'enum',
+					offset: 2,
+					length: 1,
+					readonly: true,
+					enumerations: [
+						'OTP Memory has not been programmed',
+						'OTP Memory has been programmed'
+					]
+				},
 				'OTP_PROGRAM': { type: 'boolean', offset: 0 }
+
+
 			}
 		},
-		'Control 5': {
+		'Control 5': { // DRV2605L only
 			address: 0x1F,
 			default: 0x80,
 			fields: {
-				'AUTO_OL_CNT': { offset: 7, length: 2 },
-				'LRA_AUTO_OPEN_LOOP': { type: 'boolean', offset: 5 },
-				'PLAYBACK_INTERVAL': { offset: 4 },
+				'AUTO_OL_CNT': {
+					type: 'enum',
+					offset: 7,
+					length: 2,
+					enumerations: [
+						'3 attempts',
+						'4 attempts',
+						'5 attempts',
+						'6 attempts'
+					]
+				},
+				'LRA_AUTO_OPEN_LOOP': {
+					type: 'enum',
+					offset: 5,
+					length: 1,
+					enumerations: [
+						'Never transitions to open loop',
+						'Automatically transitions to open loop'
+					]
+				},
+				'PLAYBACK_INTERVAL': {
+					type: 'enum',
+					offset: 4,
+					length: 1,
+					enumerations: [
+						'5 ms',
+						'1 ms'
+					]
+				},
 				'BLANKING_TIME': { offset: 3, length: 2 },
 				'IDISS_TIME': { offset: 1, length: 2 }
 			}
 		},
-		'LRA Open Loop Period': {
+		'LRA Open Loop Period': { // DRV2605L only
 			address: 0x20,
 			default: 0x33,
 			fields: {
