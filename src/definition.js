@@ -5,6 +5,19 @@ export const DEVICE_ID_MAP = {
 	7: 'DRV2605L (low-voltage version of the DRV2605 device)'
 }
 
+export const WAVEFORM_SEQUENCER_END_ID = 0
+export const WAVEFORM_SEQUENCER_MAX_ITEMS = 8
+
+export const MODE = {
+	INTERNAL_TRIGGER: 0,
+	EXTERNAL_TRIGGER_EDGE: 1,
+	EXTERNAL_TRIGGER_LEVEL: 2,
+	PWM: 3,
+	AUDIO_TO_VIBE: 4,
+	REAL_TIME: 5,
+	DIAGNOSTICS: 6,
+	AUTO_CALIBRATION: 7
+}
 
 
 export const DEFINITION = {
@@ -16,7 +29,7 @@ export const DEFINITION = {
 			readonly: true,
 			fields: {
 				'DEVICE_ID': { offset: 7, length: 3 },
-				'DIAG_RESULTS': { type: 'boolean', offset: 3},
+				'DIAG_RESULTS': { type: 'boolean', offset: 3 },
 				// 'FB_STS': { type: 'boolean', offset: 2 }, // DRV2605 only
 				'OVER_TEMP': { type: 'boolean', offset: 1 },
 				'OC_DETECT': { type: 'boolean', offset: 0 }
@@ -166,7 +179,7 @@ export const DEFINITION = {
 				'SNT': {}
 			}
 		},
-		'Break Time Offset': {
+		'Brake Time Offset': {
 			address: 0x10,
 			default: 0x00,
 			fields: {
@@ -365,8 +378,10 @@ export const DEFINITION = {
 					enumerations: [ 'Closed Loop', 'Open Loop' ]
 				},
 				'SUPPLY_COMP_DIS': {
-					type: 'boolean',
-					offset: 4
+					type: 'enum',
+					offset: 4,
+					length: 1,
+					enumeration: [ 'enabled', 'disabled' ]
 				},
 				'DATA_FORMAT_RTP': {
 					type: 'enum',
@@ -492,5 +507,15 @@ export const DEFINITION = {
 				'LRA_PERIOD': { }
 			}
 		},
+	},
+	bulk: {
+		'Controls': {
+			address: 0x1A,
+			length: 6
+		},
+		'Waveform Sequences': {
+			address: 0x04,
+			length: 8
+		}
 	}
 }

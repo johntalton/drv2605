@@ -1,31 +1,26 @@
-import { CommonBuilder } from './builder.js'
+import { CommonBuilder, DeviceBuilder } from './builder.js'
 import { DEFINITION } from './definition.js'
 
 export class DRV2605 {
 	constructor(bus) {
-		const common = CommonBuilder.from(DEFINITION)
-
-		return new Proxy(common, {
-			get(target, prop, receiver) {
-				return new Proxy(Reflect.get(target, prop, receiver), {
-					apply(target, thisArg, argArray) {
-						return Reflect.apply(target, thisArg, [ bus, ...argArray ])
-					}
-				})
+		const common = CommonBuilder.from(DEFINITION, {
+			async setWaveformSequencer(_bus, sequence, options) {
+				switch(sequence) {
+				case 1: return this.setWaveformSequencer1(options)
+				case 2: return this.setWaveformSequencer2(options)
+				case 3: return this.setWaveformSequencer3(options)
+				case 4: return this.setWaveformSequencer4(options)
+				case 5: return this.setWaveformSequencer5(options)
+				case 6: return this.setWaveformSequencer6(options)
+				case 7: return this.setWaveformSequencer7(options)
+				case 8: return this.setWaveformSequencer8(options)
+				default:
+					throw new Error(`sequence number invalid ${sequence}`)
+				}
 			}
 		})
+
+		return DeviceBuilder.from(common, bus)
 	}
-
-	// async getControls() {
-	// 	const controls = await Promise.all([
-	// 		this.getControl1(),
-	// 		this.getControl2(),
-	// 		this.getControl3(),
-	// 		this.getControl4(),
-	// 		this.getControl5(),
-	// 	])
-
-	// 	return controls.reduce((acc, value) => ({ ...acc, ...value }), {})
-	// }
-
 }
+
