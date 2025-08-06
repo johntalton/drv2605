@@ -4,6 +4,14 @@ export const DEFAULT_FILED_TYPE = 'int'
 export const DEFAULT_FIELD_OFFSET = 7
 export const DEFAULT_FIELD_LENGTH = 8
 
+export const NAME_SANITIZATION_REGEX = /[ \-\(\)]/g
+
+export const SANITIZED_NAME_PREFIX_SET = 'set'
+export const SANITIZED_NAME_PREFIX_GET = 'get'
+
+export const DECODE_NAME_PREFIX = 'decode'
+export const IDENTITY_DECODER = deviceObj => deviceObj
+
 export function* range(start, end, step = 1) {
 	yield start
 	if (start >= end) return
@@ -63,7 +71,9 @@ export class DeviceBuilder {
 	static from(common, bus) {
 		return new Proxy(common, {
 			get(target, prop, receiver) {
-				return new Proxy(Reflect.get(target, prop, receiver), {
+				const commonTarget = Reflect.get(target, prop, receiver)
+				if(commonTarget === undefined) { throw new TypeError(`${String(prop)} is not a function`)}
+				return new Proxy(commonTarget, {
 					apply(target, thisArg, argArray) {
 						return Reflect.apply(target, thisArg, [ bus, ...argArray ])
 					}
@@ -74,9 +84,25 @@ export class DeviceBuilder {
 }
 
 export class CommonBuilder {
+	static sanitizedGetSetNames(name) {
+		const funcName = name.replaceAll(NAME_SANITIZATION_REGEX, '')
+		return {
+			funcName,
+			getFuncName: SANITIZED_NAME_PREFIX_GET + funcName,
+			setFuncName: SANITIZED_NAME_PREFIX_SET + funcName
+		}
+	}
+
 	static makeDeserializer(regDef) {
+		const entries = Object.entries(regDef.fields)
+
+		if(entries.length === 1) {
+			const [ _key, fieldDef ] = entries[0]
+			return buffer => fieldDeserialize(buffer, fieldDef)
+		}
+
 		return buffer => {
-			return Object.entries(regDef.fields)
+			return entries
 				.map(([key, fieldDef]) => {
 					return {
 						[key]: fieldDeserialize(buffer, fieldDef)
@@ -88,97 +114,116 @@ export class CommonBuilder {
 		}
 	}
 
-	static from(definition, root = {}) {
-		const funcs = Object.entries(definition.registers)
-			.map(([ name, regDef ]) => {
-				const cleanFuncName = name.replaceAll(/[ \-\(\)]/g, '')
-				const getFuncName = 'get' + cleanFuncName
-				const setFuncName = 'set' + cleanFuncName
+	static makeSerializer(regDef) {
+		const entries = Object.entries(regDef.fields)
+
+		if(entries.length === 1) {
+			const [ key, fieldDef ] = entries[0]
+
+			return (obj, ...options) => {
+				if(fieldDef.readonly === true) { throw new Error(`field readonly ${key}`) }
+				const data = fieldSerialize(obj, fieldDef)
+				return new Uint8Array([  data ])
+			}
+		}
+
+		return (obj, ...options) => {
+			const data = entries.map(([ key, fieldDef ]) => {
+					const value = obj[key]
+					if(value === undefined) { return 0 }
+					if(fieldDef.readonly === true) { throw new Error(`field readonly ${key}`) }
+					return fieldSerialize(value, fieldDef)
+				})
+				.reduce((acc, value) => acc |= value, 0)
+
+			return new Uint8Array([ data ])
+		}
+	}
+
+	static makeBulkDeserializer(definition, bulkDef,) {
+		const deserializers = [ ...range(bulkDef.address, bulkDef.address + bulkDef.length - 1) ]
+			.map(register => {
+				const match = Object.entries(definition.registers).find(([ _, regDef ]) => regDef.address === register)
+				if(match === undefined) { throw new Error('unknown register reference') }
+				return match
+			})
+			.map(([ regName, regDef ]) => ([ regName.replaceAll(NAME_SANITIZATION_REGEX, ''), regDef ]))
+			.map(([ regName, regDef ]) => ({ regName, deserializer: CommonBuilder.makeDeserializer(regDef) }))
+
+
+		//
+		return (buffer) => {
+			const u8 = ArrayBuffer.isView(buffer) ?
+				new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) :
+				new Uint8Array(buffer, buffer.byteOffset, buffer.byteLength)
+
+			const results =  [ ...u8 ].map((value, index) => {
+				const { regName, deserializer } = deserializers[index]
+				return { regName, result: deserializer(new Uint8Array([ value ])) }
+			})
+
+			// unify will add all fields to a single object
+			// otherwise a unnamed ordered array of results will be returned
+			if(bulkDef.unify ?? false) {
+				return results.reduce((acc, value) => {
+					const { regName, result } = value
+					acc[regName] = result
+					return acc
+				}, {})
+			}
+
+			return results.map(({ _regName, result }) => result)
+		}
+	}
+
+	static makeBulkSerializer(definition, bulkDef) {
+		return (obj, ...options) => {}
+	}
+
+	static makeEncoder() {
+		return userObj => userObj
+	}
+
+	static makeDecoder(converter, funcName) {
+		const decodeFuncName = DECODE_NAME_PREFIX + funcName
+		return converter[decodeFuncName] ?? IDENTITY_DECODER
+	}
+
+	static from(definition, converter, root = {}) {
+		Object.entries(definition.registers)
+			.forEach(([ name, regDef ]) => {
+				const { getFuncName, setFuncName, funcName } = CommonBuilder.sanitizedGetSetNames(name)
 
 				const deserializer = CommonBuilder.makeDeserializer(regDef)
+				const serializer = CommonBuilder.makeSerializer(regDef)
 
-				const serializer = (obj, ...options) => {
-					const data = Object.entries(regDef.fields)
-						.map(([ key, fieldDef ]) => {
-							return fieldSerialize(obj[key], fieldDef)
-						})
-						.reduce((acc, value) => acc |= value, 0)
+				const encode = CommonBuilder.makeEncoder()
+				const decode = CommonBuilder.makeDecoder(converter, funcName)
 
-					return new Uint8Array([ data ])
+				root[getFuncName] = async (bus) => decode(deserializer(await bus.readI2cBlock(regDef.address, 1)))
+				if(regDef.readonly !== true) {
+					root[setFuncName] = async (bus, ...args) => bus.writeI2cBlock(regDef.address, serializer(encode(...args)))
 				}
-
-
-				const getFunc = async (bus) => {
-					const ab = await bus.readI2cBlock(regDef.address, 1)
-					return deserializer(ab)
-				}
-
-				const setFunc = async (bus, ...args) => {
-					const data = serializer(...args)
-					const result = await bus.writeI2cBlock(regDef.address, data)
-				}
-
-				return [getFuncName, getFunc, setFuncName, setFunc]
 			})
 
-		const _root = funcs.reduce((acc, data) => {
-			const [ getName, getFunc, setName, setFunc ] = data
-			acc[getName] = getFunc
-			acc[setName] = setFunc
-			return acc
-		}, root)
 
-		const bulkFunc = Object.entries(definition.bulk)
-			.map(([ name, bulkDef]) => {
-				const cleanFuncName = name.replaceAll(/[ \-\(\)]/g, '')
-				const getFuncName = 'get' + cleanFuncName
-				const setFuncName = 'set' + cleanFuncName
+		Object.entries(definition.bulk)
+			.forEach(([ name, bulkDef]) => {
+				const { getFuncName, setFuncName } = CommonBuilder.sanitizedGetSetNames(name)
 
-				const deserializers = [ ...range(bulkDef.address, bulkDef.address + bulkDef.length - 1) ]
-					.map(register => Object.entries(definition.registers).find(([ _, regDef ]) => regDef.address === register) ?? [ 'unknown', {} ])
-					.map(([ regName, regDef ]) => ({ regName, deserializer: CommonBuilder.makeDeserializer(regDef) }))
+				const deserializer = CommonBuilder.makeBulkDeserializer(definition, bulkDef)
+				const serializer = CommonBuilder.makeBulkSerializer(definition, bulkDef)
 
+				const encode = (userObj) => {}
+				const decode = IDENTITY_DECODER
 
-				const serializer = (obj, ...options) => {}
-
-				const deserializer = (buffer) => {
-					const u8 = ArrayBuffer.isView(buffer) ?
-						new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) :
-						new Uint8Array(buffer, buffer.byteOffset, buffer.byteLength)
-
-					return [ ...u8 ].map((value, index) => {
-						const { regName, deserializer } = deserializers[index]
-						return { regName, result: deserializer(new Uint8Array([ value ])) }
-					})
-					.map(({ regName, result }) => result)
-					// .reduce((acc, value) => {
-					// 	const { regName, result } = value
-					// 	acc[regName] = result
-					// 	return acc
-					// }, {})
+				root[getFuncName] = async (bus) => decode(deserializer(await bus.readI2cBlock(bulkDef.address, bulkDef.length)))
+				if(bulkDef.readonly !== true) {
+					root[setFuncName] = async (bus, ...args) => bus.writeI2cBlock(bulkDef.address, serializer(encode(...args)))
 				}
-
-				const getFunc = async (bus) => {
-					const ab = await bus.readI2cBlock(bulkDef.address, bulkDef.length)
-					return deserializer(ab)
-				}
-
-				const setFunc = async (bus, ...args) => {
-					const data = serializer(...args)
-					const result = await bus.writeI2cBlock(bulkDef.address, data)
-				}
-
-				return [getFuncName, getFunc, setFuncName, setFunc]
 			})
 
-		const obj = bulkFunc.reduce((acc, data) => {
-			const [ getName, getFunc, setName, setFunc ] = data
-			acc[getName] = getFunc
-			acc[setName] = setFunc
-			return acc
-		}, _root)
-
-		return obj
+			return root
 	}
 }
 
