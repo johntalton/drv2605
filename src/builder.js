@@ -18,49 +18,6 @@ export function* range(start, end, step = 1) {
 	yield* range(start + step, end, step)
 }
 
-function fieldDeserialize(buffer, fieldDef) {
-	const u8 = ArrayBuffer.isView(buffer) ?
-		new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) :
-		new Uint8Array(buffer)
-
-	const data = u8[0]
-	const type = (fieldDef?.type ?? DEFAULT_FILED_TYPE).toLowerCase()
-	const offset = fieldDef?.offset ?? DEFAULT_FIELD_OFFSET
-	const length = fieldDef?.length ?? DEFAULT_FIELD_LENGTH
-
-	if(type === 'boolean') {
-		const bit = BitSmush.extractBits(data, offset, 1)
-		// todo support active low
-		return bit === 1
-	}
-
-	if(type === 'int') {
-		const bits = BitSmush.extractBits(data, offset, length)
-		return bits
-	}
-
-	if(type === 'enum') {
-		const bits = BitSmush.extractBits(data, offset, length)
-		return bits
-	}
-
-	console.warn('unknown type', type)
-
-	return data
-}
-
-function fieldSerialize(value, fieldDef) {
-	const type = (fieldDef?.type ?? DEFAULT_FILED_TYPE).toLowerCase()
-	const offset = fieldDef?.offset ?? DEFAULT_FIELD_OFFSET
-	const length = fieldDef?.length ?? DEFAULT_FIELD_LENGTH
-
-	if (type === 'boolean') {
-		return BitSmush.smushBits([ [ offset, 1 ] ], [ value ? 1 : 0 ])
-	}
-
-	return BitSmush.smushBits([ [ offset, length ] ], [ value ])
-}
-
 export class DeviceBuilder {
 	/**
 	 * Return from constructor of Device class to automatically inject `bus` into method calls to `common`
@@ -93,19 +50,62 @@ export class CommonBuilder {
 		}
 	}
 
+	static fieldDeserialize(buffer, fieldDef) {
+	const u8 = ArrayBuffer.isView(buffer) ?
+		new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength) :
+		new Uint8Array(buffer)
+
+	const data = u8[0]
+	const type = (fieldDef?.type ?? DEFAULT_FILED_TYPE).toLowerCase()
+	const offset = fieldDef?.offset ?? DEFAULT_FIELD_OFFSET
+	const length = fieldDef?.length ?? DEFAULT_FIELD_LENGTH
+
+	if(type === 'boolean') {
+		const bit = BitSmush.extractBits(data, offset, 1)
+		// todo support active low
+		return bit === 1
+	}
+
+	if(type === 'int') {
+		const bits = BitSmush.extractBits(data, offset, length)
+		return bits
+	}
+
+	if(type === 'enum') {
+		const bits = BitSmush.extractBits(data, offset, length)
+		return bits
+	}
+
+	console.warn('unknown type', type)
+
+	return data
+}
+
+static fieldSerialize(value, fieldDef) {
+	const type = (fieldDef?.type ?? DEFAULT_FILED_TYPE).toLowerCase()
+	const offset = fieldDef?.offset ?? DEFAULT_FIELD_OFFSET
+	const length = fieldDef?.length ?? DEFAULT_FIELD_LENGTH
+
+	if (type === 'boolean') {
+		return BitSmush.smushBits([ [ offset, 1 ] ], [ value ? 1 : 0 ])
+	}
+
+	return BitSmush.smushBits([ [ offset, length ] ], [ value ])
+}
+
 	static makeDeserializer(regDef) {
 		const entries = Object.entries(regDef.fields)
 
 		if(entries.length === 1) {
 			const [ _key, fieldDef ] = entries[0]
-			return buffer => fieldDeserialize(buffer, fieldDef)
+			return buffer => CommonBuilder.fieldDeserialize(buffer, fieldDef)
 		}
 
 		return buffer => {
 			return entries
 				.map(([key, fieldDef]) => {
 					return {
-						[key]: fieldDeserialize(buffer, fieldDef)
+						[key]: CommonBuilder.fieldDeserialize(buffer, fieldDef)
 					}
 				})
 				.reduce((acc, cur) => {
@@ -122,7 +122,7 @@ export class CommonBuilder {
 
 			return (obj, ...options) => {
 				if(fieldDef.readonly === true) { throw new Error(`field readonly ${key}`) }
-				const data = fieldSerialize(obj, fieldDef)
+				const data = CommonBuilder.fieldSerialize(obj, fieldDef)
 				return new Uint8Array([  data ])
 			}
 		}
@@ -132,7 +132,7 @@ export class CommonBuilder {
 					const value = obj[key]
 					if(value === undefined) { return 0 }
 					if(fieldDef.readonly === true) { throw new Error(`field readonly ${key}`) }
-					return fieldSerialize(value, fieldDef)
+					return CommonBuilder.fieldSerialize(value, fieldDef)
 				})
 				.reduce((acc, value) => acc |= value, 0)
 
@@ -214,8 +214,8 @@ export class CommonBuilder {
 				const deserializer = CommonBuilder.makeBulkDeserializer(definition, bulkDef)
 				const serializer = CommonBuilder.makeBulkSerializer(definition, bulkDef)
 
-				const encode = (userObj) => {}
-				const decode = IDENTITY_DECODER
+				const encode = (userObj) => {} // todo
+				const decode = IDENTITY_DECODER // todo
 
 				root[getFuncName] = async (bus) => decode(deserializer(await bus.readI2cBlock(bulkDef.address, bulkDef.length)))
 				if(bulkDef.readonly !== true) {

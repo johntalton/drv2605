@@ -1,14 +1,15 @@
 {
 	"name": "@johntalton/drv2605",
 	"license": "MIT",
-	"version": "2.0.1",
+	"version": "2.1.0",
 	"type": "module",
-	  "exports": {
-    ".": "./src/index.js"
-  },
-  "files": [ "./src/**/*.js"],
+	"exports": {
+		".": "./src/index.js"
+	},
+	"files": [
+		"./src/**/*.js"
+	],
 	"dependencies": {
-		"@johntalton/and-other-delights": "^8.5.0",
 		"@johntalton/bitsmush": "^1.0.1"
 	}
 }

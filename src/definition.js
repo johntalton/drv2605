@@ -19,6 +19,55 @@ export const MODE = {
 	AUTO_CALIBRATION: 7
 }
 
+export const PLAYBACK_INTERVAL = {
+	MS_5: 0,
+	MS_1: 1
+}
+
+
+export const WAIT_TIME_MULTIPLIER_MS = 10
+
+export const DEVICE_MODE = {
+	ERM: 0,
+	LRA: 1
+}
+
+export const BACK_EMP_MULTIPLIER_VOLTAGE = 1.22
+export const A2V_BASE_LEVEL_VOLTAGE = 1.8
+export const OPEN_LOOP_PERIOD_MULTIPLIER_US = 98.46
+export const VBAT_MULTIPLIER_V = 5.6
+export const LRA_PERIOD_MULTIPLIER_US = 98.46
+export const PLAYBACK_INTERVAL_MULTIPLIERS = {
+	[PLAYBACK_INTERVAL.MS_5]: 5,
+	[PLAYBACK_INTERVAL.MS_1]: 1
+}
+export const BEMP_GAIN_MULTIPLIERS_EMF = {
+	0: 0.255,
+	1: 0.7875,
+	2: 1.365,
+	3: 3.0
+}
+export const BEMP_GAIN_MULTIPLIERS_LRA = {
+	0: 3.75,
+	1: 7.5,
+	2: 15,
+	3: 22.5
+}
+export const BEMF_GAIN_MULTIPLIERS_MODE = {
+	[DEVICE_MODE.ERM]: BEMP_GAIN_MULTIPLIERS_EMF,
+	[DEVICE_MODE.LRA]: BEMP_GAIN_MULTIPLIERS_LRA
+}
+
+// export const BLANKING_TIME_MULTIPLIERS_EMF = {}
+
+// export const IDISS_TIME__MULTIPLIERS_LAR = {}
+
+
+export const LRA_MODE_DRIVE_TIME_FACTOR_MS = 0.1
+export const ERM_MODE_DRIVE_TIME_FACTOR_MS = 0.2
+export const LRA_MODE_DRIVE_TIME_OFFSET_MS = 0.5
+export const ERM_MODE_DRIVE_TIME_OFFSET_MS = 1
+
 
 export const DEFINITION = {
 	name: 'drv2605',
@@ -316,7 +365,16 @@ export const DEFINITION = {
 					offset: 1,
 					length: 2,
 					enumerations: [
-
+						// ERM Mode
+						// 0: 0.255x
+						// 1: 0.7875x
+						// 2: 1.365x (default)
+						// 3: 3.0x
+						// LRA Mode
+						// 0: 3.75x
+						// 1: 7.5x
+						// 2: 15x (default)
+						// 3: 22.5x
 					]
 				}
 			}
@@ -355,8 +413,63 @@ export const DEFINITION = {
 						'300 µs'
 					]
 				},
-				'BLANKING_TIME': { offset: 3, length: 2 },
-				'IDISS_TIME': { offset: 1, length: 2 }
+				'BLANKING_TIME': {
+					type: 'enum',
+					offset: 3,
+					length: 2,
+					enumerations: [
+						// N_ERM_LRA = 0 (ERM mode)
+						// 0: 45 µs
+						// 1: 75 µs
+						// 2: 150 µs
+						// 3: 225 µs
+						// N_ERM_LRA = 1(LRA mode)
+						// 0: 15 µs
+						// 1: 25 µs
+						// 2: 50 µs
+						// 3: 75 µs
+						// 4: 90 µs
+						// 5: 105 µs
+						// 6: 120 µs
+						// 7: 135 µs
+						// 8: 150 µs
+						// 9: 165 µs
+						// 10: 180 µs
+						// 11: 195 µs
+						// 12: 210 µs
+						// 13: 235 µs
+						// 14: 260 µs
+						// 15: 285 µs
+					]
+				},
+				'IDISS_TIME': {
+					offset: 1,
+					length: 2,
+					enumerations: [
+						// N_ERM_LRA = 0 (ERM mode)
+						// 0: 45 µs
+						// 1: 75 µs
+						// 2: 150 µs
+						// 3: 225 µs
+						// N_ERM_LRA = 1(LRA mode)
+						// 0: 15 µs
+						// 1: 25 µs
+						// 2: 50 µs
+						// 3: 75 µs
+						// 4: 90 µs
+						// 5: 105 µs
+						// 6: 120 µs
+						// 7: 135 µs
+						// 8: 150 µs
+						// 9: 165 µs
+						// 10: 180 µs
+						// 11: 195 µs
+						// 12: 210 µs
+						// 13: 235 µs
+						// 14: 260 µs
+						// 15: 285 µs
+					]
+				}
 			}
 		},
 		'Control 3': {
@@ -444,7 +557,11 @@ export const DEFINITION = {
 						'OTP Memory has been programmed'
 					]
 				},
-				'OTP_PROGRAM': { type: 'boolean', offset: 0 }
+				'OTP_PROGRAM': {
+					readonly: true, // todo support restricted
+					type: 'boolean',
+					offset: 0
+				}
 
 
 			}
@@ -511,7 +628,8 @@ export const DEFINITION = {
 	bulk: {
 		'Controls': {
 			address: 0x1A,
-			length: 6
+			length: 6,
+			unify: true
 		},
 		'Waveform Sequences': {
 			address: 0x04,
