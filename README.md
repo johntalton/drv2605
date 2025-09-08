@@ -1,8 +1,10 @@
 # DRV2605
 
-![CI](https://github.com/johntalton/drv2605/workflows/CI/badge.svg)
+Haptic Driver for ERM and LRA based on the [DRV2605](https://www.adafruit.com/product/2305) supporting full range of configuration options.
 
- Haptic Driver for ERM and LRA based on the [DRV2605](https://www.adafruit.com/product/2305) supporting full range of configuration options.
+[![npm Version](http://img.shields.io/npm/v/@johntalton/drv2605.svg)](https://www.npmjs.com/package/@johntalton/drv2605)
+![GitHub package.json version](https://img.shields.io/github/package-json/v/johntalton/drv2605)
+[![CI](https://github.com/johntalton/drv2605/actions/workflows/CI.yaml/badge.svg)](https://github.com/johntalton/drv2605/actions/workflows/CI.yaml)
 
 
 ## Example
